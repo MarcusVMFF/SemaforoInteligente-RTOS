@@ -11,6 +11,8 @@ Um projeto que consiste na administração de threads(Tasks) com o Free-RTOS, LE
 
 ---
 
+## 📊 **Video do Projeto:** https://drive.google.com/file/d/1G63GOcDMm1tIHZwsFUQiteUj-pUA8d1L/view?usp=drive_link
+
 ## 🛠️ **Tecnologias Utilizadas**
 
 - **Linguagem de Programação:** C / CMake
