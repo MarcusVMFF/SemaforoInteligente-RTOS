@@ -34,6 +34,61 @@ bool vermelho = 0;
 TaskHandle_t xHandleBlink1 = NULL;
 TaskHandle_t xHandleBlink2 = NULL;
 
+void iniciar_pwm()
+{
+    // Configuração dos LEDs (mantida como está)
+    gpio_init(LED_PIN_GREEN);
+    gpio_set_dir(LED_PIN_GREEN, GPIO_OUT);
+    gpio_init(LED_PIN_RED);
+    gpio_set_dir(LED_PIN_RED, GPIO_OUT);
+    
+    gpio_set_function(LED_PIN_GREEN, GPIO_FUNC_PWM);
+    gpio_set_function(LED_PIN_RED, GPIO_FUNC_PWM);
+
+    uint slice_led_red = pwm_gpio_to_slice_num(LED_PIN_RED);
+    uint slice_led_green = pwm_gpio_to_slice_num(LED_PIN_GREEN);
+
+    pwm_set_clkdiv(slice_led_green, 500.0f);
+    pwm_set_wrap(slice_led_green, 255);
+    pwm_set_clkdiv(slice_led_red, 500.0f);
+    pwm_set_wrap(slice_led_red, 255);
+
+    pwm_set_enabled(slice_led_green, true);
+    pwm_set_enabled(slice_led_red, true);
+
+    // Configuração específica para o buzzer
+    gpio_init(BUZZER_PIN);
+    gpio_set_dir(BUZZER_PIN, GPIO_OUT);
+    gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
+    
+    // Não habilitar o PWM do buzzer ainda - será feito na função beep_buzzer
+}
+
+void beep_buzzer(int duration_ms, int freq) {
+    uint slice_buzzer = pwm_gpio_to_slice_num(BUZZER_PIN);
+    uint channel_buzzer = pwm_gpio_to_channel(BUZZER_PIN);
+    
+    // Configuração do PWM para o buzzer
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_clkdiv(&config, 1.0f); // Divisor de clock 1 (125MHz)
+    
+    // Calcula o wrap value baseado na frequência desejada
+    uint32_t wrap = (125000000 / freq) - 1;
+    if (wrap > 65535) wrap = 65535; // Limite máximo para 16-bit
+    
+    pwm_config_set_wrap(&config, wrap);
+    pwm_init(slice_buzzer, &config, true);
+    
+    // Configura duty cycle para 50%
+    pwm_set_chan_level(slice_buzzer, channel_buzzer, wrap / 2);
+    
+    // Aguarda a duração do beep
+    sleep_ms(duration_ms);
+    
+    // Desliga o buzzer
+    pwm_set_chan_level(slice_buzzer, channel_buzzer, 0);
+    pwm_set_enabled(slice_buzzer, false);
+}
 
 double desenhoGREEN[25] =  {0, 0, 0, 0, 1,
                             0, 1, 0, 0, 0,
@@ -114,72 +169,57 @@ void desenho_pioYLLW(double *desenho, uint32_t valor_led, PIO pio, uint sm, doub
     }
 
 }
-   void iniciar_pwm()
-   {
-       // Configuração dos LEDs (mantida como está)
-       gpio_init(LED_PIN_GREEN);
-       gpio_set_dir(LED_PIN_GREEN, GPIO_OUT);
-       gpio_init(LED_PIN_RED);
-       gpio_set_dir(LED_PIN_RED, GPIO_OUT);
-       
-       gpio_set_function(LED_PIN_GREEN, GPIO_FUNC_PWM);
-       gpio_set_function(LED_PIN_RED, GPIO_FUNC_PWM);
-   
-       uint slice_led_red = pwm_gpio_to_slice_num(LED_PIN_RED);
-       uint slice_led_green = pwm_gpio_to_slice_num(LED_PIN_GREEN);
-   
-       pwm_set_clkdiv(slice_led_green, 500.0f);
-       pwm_set_wrap(slice_led_green, 255);
-       pwm_set_clkdiv(slice_led_red, 500.0f);
-       pwm_set_wrap(slice_led_red, 255);
-   
-       pwm_set_enabled(slice_led_green, true);
-       pwm_set_enabled(slice_led_red, true);
-   
-       // Configuração específica para o buzzer
-       gpio_init(BUZZER_PIN);
-       gpio_set_dir(BUZZER_PIN, GPIO_OUT);
-       gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
-       
-       // Não habilitar o PWM do buzzer ainda - será feito na função beep_buzzer
-   }
-   
-   void beep_buzzer(int duration_ms, int freq) {
-       uint slice_buzzer = pwm_gpio_to_slice_num(BUZZER_PIN);
-       uint channel_buzzer = pwm_gpio_to_channel(BUZZER_PIN);
-       
-       // Configuração do PWM para o buzzer
-       pwm_config config = pwm_get_default_config();
-       pwm_config_set_clkdiv(&config, 1.0f); // Divisor de clock 1 (125MHz)
-       
-       // Calcula o wrap value baseado na frequência desejada
-       uint32_t wrap = (125000000 / freq) - 1;
-       if (wrap > 65535) wrap = 65535; // Limite máximo para 16-bit
-       
-       pwm_config_set_wrap(&config, wrap);
-       pwm_init(slice_buzzer, &config, true);
-       
-       // Configura duty cycle para 50%
-       pwm_set_chan_level(slice_buzzer, channel_buzzer, wrap / 2);
-       
-       // Aguarda a duração do beep
-       sleep_ms(duration_ms);
-       
-       // Desliga o buzzer
-       pwm_set_chan_level(slice_buzzer, channel_buzzer, 0);
-       pwm_set_enabled(slice_buzzer, false);
-   }
-
 bool flagModoNoturno = false;
 
-void ModoNormal()
-{
+void MatrizTask(){
     PIO pio = pio0;
     uint offset = pio_add_program(pio, &blink_program);
     uint sm = pio_claim_unused_sm(pio, true);
     uint32_t valor_led;
     double r = 0.0, b = 0.0 , g = 0.0;
     blink_program_init(pio, sm, offset, MATRIXPIO);
+
+    while(true){
+
+        if(verde && flagModoNoturno == false){
+            vTaskDelay(pdMS_TO_TICKS(1));
+            desenho_pioGREEN(desenhoGREEN,valor_led, pio, sm, r, g, b);
+        }
+        if(amarelo && flagModoNoturno == false){
+            vTaskDelay(pdMS_TO_TICKS(1));
+            desenho_pioYLLW(desenhoYLLW, valor_led, pio, sm, r, g, b);
+        }
+        if(vermelho && flagModoNoturno == false){    
+            vTaskDelay(pdMS_TO_TICKS(1));
+            desenho_pioRED(desenhoRED, valor_led, pio, sm, r, g, b);
+        }
+        if(flagModoNoturno == true){
+            double desenhoTemp[25];
+
+            // Fade-in
+            for (double brilho = 0.0; brilho <= 1.0; brilho += 0.01) {
+                for (int i = 0; i < 25; i++) {
+                    desenhoTemp[i] = desenhoYLLW[i] * brilho;
+                }
+                desenho_pioYLLW(desenhoTemp, valor_led, pio, sm, 0.0, 1.0, 1.0); // Amarelo = verde + vermelho
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
+        
+            // Fade-out
+            for (double brilho = 1.0; brilho >= 0.0; brilho -= 0.01) {
+                for (int i = 0; i < 25; i++) {
+                    desenhoTemp[i] = desenhoYLLW[i] * brilho;
+                }
+                desenho_pioYLLW(desenhoTemp, valor_led, pio, sm, 0.0, 1.0, 1.0);
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
+        }
+    }
+}
+
+void ModoNormal()
+{
+   
     while (true) {
         // Verde – 1 beep curto por segundo
         verde = true;
@@ -187,10 +227,8 @@ void ModoNormal()
         vermelho = false;
         pwm_set_gpio_level(LED_PIN_GREEN, 255);
         
-        vTaskDelay(pdMS_TO_TICKS(1));
-        desenho_pioGREEN(desenhoGREEN,valor_led, pio, sm, r, g, b);
         beep_buzzer(100, 1000);  // Beep curto
-        vTaskDelay(pdMS_TO_TICKS(900));
+        vTaskDelay(pdMS_TO_TICKS(3000));
         pwm_set_gpio_level(LED_PIN_GREEN, 0);
         
 
@@ -198,14 +236,11 @@ void ModoNormal()
         verde = false;
         amarelo = true;
         vermelho = false;
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 6; i++) {
             pwm_set_gpio_level(LED_PIN_GREEN, 255);
-            pwm_set_gpio_level(LED_PIN_RED, 255);
-            
-            vTaskDelay(pdMS_TO_TICKS(1));
-            desenho_pioYLLW(desenhoYLLW, valor_led, pio, sm, r, g, b);
+            pwm_set_gpio_level(LED_PIN_RED, 255);          
             beep_buzzer(100, 1500);
-            vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
         pwm_set_gpio_level(LED_PIN_GREEN, 0);
         pwm_set_gpio_level(LED_PIN_RED, 0);
@@ -216,26 +251,17 @@ void ModoNormal()
         amarelo = false;
         vermelho = true;
         pwm_set_gpio_level(LED_PIN_RED, 255);
-        
-        vTaskDelay(pdMS_TO_TICKS(1));
-        desenho_pioRED(desenhoRED, valor_led, pio, sm, r, g, b);
         beep_buzzer(500, 600);  // Tom contínuo de 500ms
-        vTaskDelay(pdMS_TO_TICKS(1500));
+        vTaskDelay(pdMS_TO_TICKS(2500));
         pwm_set_gpio_level(LED_PIN_RED, 0);
 
     }
 }
 
 void ModoNoturno()
-{
-
-    
-    // Limpa a matriz ao entrar no modo noturno
-    
+{ 
     const int delay_step_ms = 20;  // Intervalo entre passos
     const int max_intensity = 255;
-
-
     while (true)
     {
         // Efeito de fade-in (do escuro até a intensidade máxima)
@@ -359,7 +385,8 @@ int main()
 
     xTaskCreate(ModoNormal, "Blink Task Led1", configMINIMAL_STACK_SIZE, NULL, 1, &xHandleBlink1);
     xTaskCreate(ModoNoturno, "Blink Task Led2", configMINIMAL_STACK_SIZE, NULL, 1, &xHandleBlink2);
-    xTaskCreate(DisplayTask, "Cont Task Disp3", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+    xTaskCreate(DisplayTask, "Display", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+    xTaskCreate(MatrizTask, "Task Matriz", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
     vTaskSuspend(xHandleBlink2);
     vTaskStartScheduler();
     panic_unsupported();
